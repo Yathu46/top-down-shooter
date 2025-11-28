@@ -1,4 +1,4 @@
-// ===== CLIENT NETWORK MANAGER =====
+// ===== CLIENT NETWORK MANAGER (FIXED) =====
 
 const NetworkManager = {
     socket: null,
@@ -7,18 +7,14 @@ const NetworkManager = {
     playerId: null,
     isHost: false,
     otherPlayers: new Map(),
-    serverUrl: 'https://top-down-shooter-thes.onrender.com', // Change when deployed
+    serverUrl: 'https://YOUR-APP.onrender.com', // UPDATE THIS!
 
-    // Initialize connection
     init() {
-        // Load Socket.IO from CDN (add to HTML)
         this.socket = io(this.serverUrl);
-
         this.setupEventListeners();
     },
 
     setupEventListeners() {
-        // Connection events
         this.socket.on('connect', () => {
             this.connected = true;
             this.playerId = this.socket.id;
@@ -37,7 +33,6 @@ const NetworkManager = {
             console.error('Server error:', data.message);
         });
 
-        // Room events
         this.socket.on('room-created', (data) => {
             this.roomCode = data.roomCode;
             this.playerId = data.playerId;
@@ -64,7 +59,6 @@ const NetworkManager = {
             this.leaveRoom();
         });
 
-        // Game events
         this.socket.on('game-start', (data) => {
             console.log('Game starting!', data);
             this.startMultiplayerGame(data);
@@ -91,7 +85,6 @@ const NetworkManager = {
         });
     },
 
-    // Room management
     createRoom(playerName, mapName) {
         if (!this.connected) {
             alert('Not connected to server');
@@ -133,7 +126,6 @@ const NetworkManager = {
         GameState.returnToMenu();
     },
 
-    // Game synchronization
     sendPlayerUpdate(playerData) {
         if (!this.roomCode || !GameState.isPlaying) return;
 
@@ -168,19 +160,20 @@ const NetworkManager = {
         });
     },
 
-    // Handle other players
     updateOtherPlayer(data) {
         if (data.playerId === this.playerId) return;
 
         let otherPlayer = this.otherPlayers.get(data.playerId);
 
         if (!otherPlayer) {
-            // Create new network player
             otherPlayer = new NetworkPlayer(data.playerId);
             this.otherPlayers.set(data.playerId, otherPlayer);
+            console.log('Created network player:', data.playerId);
         }
 
-        // Update position with interpolation
+        // FIX: Immediately update position (less interpolation delay)
+        otherPlayer.x = data.x;
+        otherPlayer.y = data.y;
         otherPlayer.targetX = data.x;
         otherPlayer.targetY = data.y;
         otherPlayer.angle = data.angle;
@@ -188,6 +181,7 @@ const NetworkManager = {
         otherPlayer.isSprinting = data.isSprinting;
         otherPlayer.isPeeking = data.isPeeking;
         otherPlayer.health = data.health;
+        otherPlayer.isDead = false; // FIX: Ensure they're visible when moving
     },
 
     handleOtherPlayerShot(data) {
@@ -196,11 +190,16 @@ const NetworkManager = {
         // Create bullet from other player
         const bullet = new Bullet(data.x, data.y, data.angle, 25);
         bullet.ownerId = data.playerId;
+        bullet.isNetworkBullet = true; // FIX: Mark as network bullet
         bullets.push(bullet);
 
-        // Create muzzle flash
+        console.log('Other player shot:', data.playerId);
+
+        // FIX: Create muzzle flash even in fog
         if (window.ENABLE_MUZZLE_FLASH) {
-            muzzleFlashes.push(new MuzzleFlash(data.x, data.y, data.angle));
+            const flash = new MuzzleFlash(data.x, data.y, data.angle);
+            flash.isNetworkFlash = true; // FIX: Mark as network flash (always visible)
+            muzzleFlashes.push(flash);
         }
     },
 
@@ -208,7 +207,10 @@ const NetworkManager = {
         if (data.targetId === this.playerId) {
             // We got hit
             player.health = data.newHealth;
-            // Flash screen red or show hit indicator
+            console.log('You were hit! Health:', player.health);
+
+            // FIX: Visual feedback
+            this.showHitEffect();
         }
     },
 
@@ -216,7 +218,9 @@ const NetworkManager = {
         if (data.victimId === this.playerId) {
             // We died
             console.log('You were killed by', data.killerId);
-            // Show death screen, respawn after delay
+            player.health = 0;
+
+            // FIX: Respawn after delay
             setTimeout(() => {
                 this.respawnPlayer();
             }, 3000);
@@ -225,10 +229,17 @@ const NetworkManager = {
             console.log('You killed', data.victimId);
         }
 
-        // Remove dead player temporarily
+        // FIX: Handle other player death properly
         const deadPlayer = this.otherPlayers.get(data.victimId);
         if (deadPlayer) {
             deadPlayer.isDead = true;
+            // FIX: Respawn other player after delay
+            setTimeout(() => {
+                if (deadPlayer) {
+                    deadPlayer.isDead = false;
+                    deadPlayer.health = deadPlayer.maxHealth;
+                }
+            }, 3000);
         }
     },
 
@@ -239,13 +250,11 @@ const NetworkManager = {
         player.x = spawn.x;
         player.y = spawn.y;
         player.health = player.maxHealth;
+        console.log('Respawned at', spawn.x, spawn.y);
     },
 
     startMultiplayerGame(data) {
-        // Hide lobby
         MultiplayerUI.hideLobby();
-
-        // Setup game
         MenuSystem.startGame();
 
         // Store other players info
@@ -255,6 +264,7 @@ const NetworkManager = {
                 netPlayer.name = p.name;
                 netPlayer.color = p.color;
                 this.otherPlayers.set(p.id, netPlayer);
+                console.log('Added player to game:', p.name);
             }
         });
     },
@@ -265,10 +275,28 @@ const NetworkManager = {
             indicator.textContent = connected ? '● ONLINE' : '● OFFLINE';
             indicator.style.color = connected ? '#0f0' : '#f00';
         }
+    },
+
+    // FIX: Visual hit effect
+    showHitEffect() {
+        if (!canvas) return;
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 0, 0, 0.3);
+            pointer-events: none;
+            z-index: 9999;
+        `;
+        document.body.appendChild(overlay);
+        setTimeout(() => overlay.remove(), 100);
     }
 };
 
-// ===== NETWORK PLAYER CLASS =====
+// ===== NETWORK PLAYER CLASS (FIXED) =====
 
 class NetworkPlayer {
     constructor(id) {
@@ -287,13 +315,17 @@ class NetworkPlayer {
         this.isSprinting = false;
         this.isPeeking = false;
         this.isDead = false;
-        this.interpolationSpeed = 0.3;
+        this.interpolationSpeed = 0.5; // FIX: Faster interpolation
+        this.alwaysVisible = true; // FIX: Always render (ignore fog)
     }
 
     update(deltaTime) {
-        // Smooth interpolation to target position
-        this.x = lerp(this.x, this.targetX, this.interpolationSpeed);
-        this.y = lerp(this.y, this.targetY, this.interpolationSpeed);
+        if (this.isDead) return;
+
+        // Smooth interpolation
+        const lerpSpeed = this.interpolationSpeed;
+        this.x = lerp(this.x, this.targetX, lerpSpeed);
+        this.y = lerp(this.y, this.targetY, lerpSpeed);
     }
 
     draw(ctx) {
@@ -304,6 +336,13 @@ class NetworkPlayer {
         const scaledRadius = this.radius * Camera.zoom;
 
         ctx.save();
+
+        // FIX: Draw outline for better visibility
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 3 * Camera.zoom;
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, scaledRadius + 2, 0, Math.PI * 2);
+        ctx.stroke();
 
         // Draw player circle
         ctx.fillStyle = this.color;
@@ -316,31 +355,42 @@ class NetworkPlayer {
         ctx.lineWidth = 4 * Camera.zoom;
         ctx.beginPath();
         ctx.moveTo(screenX, screenY);
+        const gunLength = scaledRadius + 15 * Camera.zoom;
         ctx.lineTo(
-            screenX + Math.cos(this.angle) * (scaledRadius + 15 * Camera.zoom),
-            screenY + Math.sin(this.angle) * (scaledRadius + 15 * Camera.zoom)
+            screenX + Math.cos(this.angle) * gunLength,
+            screenY + Math.sin(this.angle) * gunLength
         );
         ctx.stroke();
 
-        // Draw name above player
+        // Draw name above player (FIX: Always visible)
         ctx.fillStyle = '#fff';
-        ctx.font = `${12 * Camera.zoom}px Courier New`;
+        ctx.font = `bold ${14 * Camera.zoom}px Courier New`;
         ctx.textAlign = 'center';
-        ctx.fillText(this.name, screenX, screenY - scaledRadius - 10 * Camera.zoom);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        const nameY = screenY - scaledRadius - 10 * Camera.zoom;
+        ctx.strokeText(this.name, screenX, nameY);
+        ctx.fillText(this.name, screenX, nameY);
 
-        // Draw health bar
-        const barWidth = 40 * Camera.zoom;
-        const barHeight = 4 * Camera.zoom;
+        // Draw health bar (FIX: Brighter colors)
+        const barWidth = 50 * Camera.zoom;
+        const barHeight = 6 * Camera.zoom;
         const barX = screenX - barWidth / 2;
-        const barY = screenY - scaledRadius - 20 * Camera.zoom;
+        const barY = screenY - scaledRadius - 25 * Camera.zoom;
 
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = '#000';
         ctx.fillRect(barX, barY, barWidth, barHeight);
-        ctx.fillStyle = '#0f0';
-        ctx.fillRect(barX, barY, (this.health / this.maxHealth) * barWidth, barHeight);
+
+        const healthPercent = this.health / this.maxHealth;
+        const barColor = healthPercent > 0.5 ? '#0f0' : healthPercent > 0.25 ? '#ff0' : '#f00';
+        ctx.fillStyle = barColor;
+        ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+
+        // Border
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
 
         ctx.restore();
     }
-
 }
-
