@@ -7,7 +7,7 @@ const NetworkManager = {
     playerId: null,
     isHost: false,
     otherPlayers: new Map(),
-    serverUrl: 'https://top-down-shooter.onrender.com', // Change when deployed
+    serverUrl: 'https://top-down-shooter-thes.onrender.com', // Change when deployed
 
     // Initialize connection
     init() {
@@ -343,3 +343,4 @@ class NetworkPlayer {
     }
 
 }
+
