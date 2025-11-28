@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOP-DOWN SHOOTER - MULTIPLAYER</title>
+    <link rel="stylesheet" href="css/style.css">
+
+    <!-- Socket.IO Client -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+</head>
+<body>
+
+    <!-- ===== MAIN MENU CONTAINER ===== -->
+    <div id="menuContainer">
+
+        <!-- Main Menu Screen -->
+        <div id="mainScreen" class="menu-screen">
+            <div class="main-menu">
+                <h1 class="game-title">TOP-DOWN SHOOTER</h1>
+                <div class="menu-buttons">
+                    <button id="singleplayerButton" class="btn btn-primary">SINGLEPLAYER</button>
+                    <button id="multiplayerButton" class="btn btn-primary">MULTIPLAYER</button>
+                    <button id="settingsButton" class="btn btn-secondary">SETTINGS</button>
+                    <button id="quitButton" class="btn btn-danger">QUIT</button>
+                </div>
+                <div id="connectionStatus" style="position:absolute;bottom:20px;right:20px;font-size:0.8rem;color:#666;">
+                    ● CONNECTING...
+                </div>
+            </div>
+        </div>
+
+        <!-- Map Selection Screen (Singleplayer) -->
+        <div id="mapSelectScreen" class="menu-screen">
+            <div class="map-select-container">
+                <div class="map-list">
+                    <h2>SELECT MAP</h2>
+
+                    <div class="map-option selected" data-map="warehouse">
+                        <h3>WAREHOUSE</h3>
+                        <p>Industrial combat arena</p>
+                    </div>
+
+                    <div class="map-option" data-map="bunker">
+                        <h3>BUNKER</h3>
+                        <p>Close-quarters facility</p>
+                    </div>
+
+                    <div class="map-option" data-map="urban">
+                        <h3>URBAN</h3>
+                        <p>City streets environment</p>
+                    </div>
+
+                    <div class="map-select-actions">
+                        <button id="backToMainButton" class="btn btn-secondary">BACK</button>
+                        <button id="startGameButton" class="btn btn-primary">START</button>
+                    </div>
+                </div>
+
+                <div class="map-preview-container">
+                    <div id="mapPreview"></div>
+                    <div id="mapInfo">
+                        <h2>WAREHOUSE</h2>
+                        <p class="map-description">Industrial layout with scattered cover. Mid-range combat.</p>
+                        <div class="map-stats">
+                            <div class="stat"><span>DIFFICULTY:</span> MEDIUM</div>
+                            <div class="stat"><span>SIZE:</span> 40x40</div>
+                            <div class="stat"><span>COVER:</span> MODERATE</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ===== GAME CONTAINER (CENTERED) ===== -->
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+
+    <!-- ===== IN-GAME UI ===== -->
+    <div id="inGameUI">
+        <button id="inGameSettingsBtn">SETTINGS</button>
+        <div id="debug-info"></div>
+        <div id="mobile-controls"></div>
+    </div>
+
+    <!-- ===== SETTINGS PANEL ===== -->
+    <div id="settingsPanel"></div>
+
+    <!-- Scripts -->
+    <script src="js/utils.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/weapon.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/fog.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/network.js"></script>
+    <script src="js/multiplayer-ui.js"></script>
+    <script src="js/menu.js"></script>
+    <script src="js/main.js"></script>
+
+    <script>
+        // Initialize everything on page load
+        window.addEventListener('load', () => {
+            Settings.init();
+            NetworkManager.init();
+            MultiplayerUI.init();
+            MenuSystem.init();
+        });
+    </script>
+</body>
+</html>
