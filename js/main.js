@@ -1,11 +1,10 @@
-// ===== MAIN GAME LOGIC (WITH MULTIPLAYER) =====
+// ===== MAIN GAME LOGIC (FIXED MULTIPLAYER) =====
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 canvas.width = 800;
 canvas.height = 600;
 
-// CAMERA with dynamic zoom
 const Camera = {
     x: 0,
     y: 0,
@@ -58,7 +57,6 @@ let bullets = [];
 let muzzleFlashes = [];
 let lastTime = 0;
 
-// Global settings
 window.BULLET_SPEED = 800;
 window.GRID_OPACITY = 0.2;
 window.ENABLE_MUZZLE_FLASH = true;
@@ -83,7 +81,7 @@ function update(deltaTime) {
     player.update(deltaTime);
     Camera.update(player, deltaTime);
 
-    // MULTIPLAYER: Send player updates to server
+    // MULTIPLAYER: Send updates
     if (GameState.isMultiplayer && NetworkManager.connected) {
         if (!window.lastNetworkUpdate || Date.now() - window.lastNetworkUpdate > 50) {
             NetworkManager.sendPlayerUpdate({
@@ -118,15 +116,16 @@ function update(deltaTime) {
                     const dy = bullets[i].y - netPlayer.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
 
-                    // Check if bullet hits network player
-                    if (dist < netPlayer.radius && bullets[i].ownerId !== netPlayer.id) {
+                    // FIX: Only check bullets we own
+                    if (dist < netPlayer.radius && bullets[i].ownerId !== netPlayer.id && 
+                        bullets[i].ownerId === NetworkManager.playerId) {
                         bullets[i].alive = false;
                         const damage = bullets[i].damage || 25;
                         const newHealth = Math.max(0, netPlayer.health - damage);
                         netPlayer.health = newHealth;
 
-                        // Send hit to server
                         NetworkManager.sendHit(netPlayer.id, damage, newHealth);
+                        console.log('Hit network player!', netPlayer.name, 'for', damage, 'damage');
                     }
                 }
             });
@@ -154,22 +153,47 @@ function render() {
     drawGrid();
     drawObstacles();
 
-    // MULTIPLAYER: Draw network players
+    // Draw bullets (before fog)
+    bullets.forEach(bullet => bullet.draw(ctx));
+
+    // Draw local player
+    if (player) player.draw(ctx);
+
+    // FIX: Draw network muzzle flashes BEFORE fog (always visible)
+    if (window.ENABLE_MUZZLE_FLASH) {
+        muzzleFlashes.forEach(flash => {
+            if (flash.isNetworkFlash) {
+                flash.draw(ctx);
+            }
+        });
+    }
+
+    ctx.restore();
+
+    // Apply fog of war
+    if (player) FogOfWar.draw(ctx, player);
+
+    // FIX: Draw network players AFTER fog (always visible)
+    ctx.save();
     if (GameState.isMultiplayer) {
         NetworkManager.otherPlayers.forEach(netPlayer => {
             netPlayer.draw(ctx);
         });
     }
+    ctx.restore();
 
-    bullets.forEach(bullet => bullet.draw(ctx));
-    drawSpreadArc();
-    if (player) player.draw(ctx);
+    // FIX: Draw local player muzzle flashes AFTER fog
+    ctx.save();
     if (window.ENABLE_MUZZLE_FLASH) {
-        muzzleFlashes.forEach(flash => flash.draw(ctx));
+        muzzleFlashes.forEach(flash => {
+            if (!flash.isNetworkFlash) {
+                flash.draw(ctx);
+            }
+        });
     }
     ctx.restore();
 
-    if (player) FogOfWar.draw(ctx, player);
+    // Draw UI last
     drawUI();
 }
 
@@ -260,65 +284,31 @@ function drawUI() {
         ctx.fillStyle = '#f39c12';
         ctx.fillRect(barX, barY, barWidth * progress, barHeight);
     }
-}
 
-function drawSpreadArc() {
-    if (!player || !player.weapon) return;
+    // FIX: Show player health
+    if (player) {
+        const healthBarWidth = 200;
+        const healthBarHeight = 20;
+        const healthBarX = 20;
+        const healthBarY = canvas.height - 60;
 
-    const weapon = player.weapon;
-    const spread = weapon.getCurrentSpread(player);
-    const screenX = Camera.toScreenX(player.x);
-    const screenY = Camera.toScreenY(player.y);
-    const arcLength = 60 * Camera.zoom;
-    const spreadRad = toRadians(spread);
-    const halfSpread = spreadRad / 2;
-    const startAngle = player.angle - halfSpread;
-    const endAngle = player.angle + halfSpread;
+        ctx.fillStyle = '#333';
+        ctx.fillRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
 
-    ctx.save();
-    ctx.fillStyle = player.isAiming ? 'rgba(0, 255, 0, 0.15)' : 'rgba(255, 255, 255, 0.1)';
-    ctx.beginPath();
-    ctx.moveTo(screenX, screenY);
-    ctx.arc(screenX, screenY, arcLength, startAngle, endAngle);
-    ctx.closePath();
-    ctx.fill();
+        const healthPercent = player.health / player.maxHealth;
+        const healthColor = healthPercent > 0.5 ? '#0f0' : healthPercent > 0.25 ? '#ff0' : '#f00';
+        ctx.fillStyle = healthColor;
+        ctx.fillRect(healthBarX, healthBarY, healthBarWidth * healthPercent, healthBarHeight);
 
-    ctx.strokeStyle = player.isAiming ? 'rgba(0, 255, 0, 0.4)' : 'rgba(255, 255, 255, 0.3)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(screenX, screenY, arcLength, startAngle, endAngle);
-    ctx.stroke();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
 
-    ctx.strokeStyle = player.isAiming ? 'rgba(0, 255, 0, 0.3)' : 'rgba(255, 255, 255, 0.25)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(screenX, screenY);
-    ctx.lineTo(
-        screenX + Math.cos(startAngle) * arcLength,
-        screenY + Math.sin(startAngle) * arcLength
-    );
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(screenX, screenY);
-    ctx.lineTo(
-        screenX + Math.cos(endAngle) * arcLength,
-        screenY + Math.sin(endAngle) * arcLength
-    );
-    ctx.stroke();
-
-    ctx.strokeStyle = player.isAiming ? 'rgba(0, 255, 0, 0.5)' : 'rgba(255, 255, 255, 0.4)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
-    ctx.beginPath();
-    ctx.moveTo(screenX, screenY);
-    ctx.lineTo(
-        screenX + Math.cos(player.angle) * arcLength,
-        screenY + Math.sin(player.angle) * arcLength
-    );
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(`HP: ${Math.ceil(player.health)}/${player.maxHealth}`, healthBarX + 5, healthBarY + 15);
+    }
 }
 
 function updateDebugInfo() {
@@ -326,13 +316,17 @@ function updateDebugInfo() {
     if (!info || !player) return;
 
     const spread = player.weapon.getCurrentSpread(player);
+    const networkStatus = GameState.isMultiplayer ? 
+        `MP (${NetworkManager.otherPlayers.size} players)` : 'SP';
+
     info.innerHTML = `
 Pos: ${Math.floor(player.x)}, ${Math.floor(player.y)}
 Spread: ${spread.toFixed(1)}°
 Recoil: ${player.weapon.currentRecoil.toFixed(1)}°
 Ammo: ${player.weapon.currentAmmo}/${player.weapon.reserveAmmo}
+HP: ${Math.ceil(player.health)}/${player.maxHealth}
 ${player.isPeeking ? 'PEEKING' : ''} ${player.isAiming ? 'ADS' : ''} ${player.isSprinting ? 'SPRINT' : player.isMoving ? 'WALK' : 'STILL'}
-${GameState.isMultiplayer ? 'MULTIPLAYER' : 'SINGLEPLAYER'}
+${networkStatus}
     `;
 }
 
@@ -391,7 +385,6 @@ function checkCollision(x, y, width, height) {
     return null;
 }
 
-// Initialize on load
 window.addEventListener('load', () => {
     Input.init();
     MapSystem.init();
